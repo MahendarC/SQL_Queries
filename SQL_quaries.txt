@@ -1,0 +1,145 @@
+-- We will use two hypothetical tables:
+--
+-- 1. `customers`: Contains customer information.
+--    - customer_id (integer, primary key)
+--    - region (text)
+--    - registration_date (date)
+--
+-- 2. `sales`: Contains transaction data.
+--    - sale_id (integer, primary key)
+--    - customer_id (integer, foreign key)
+--    - sale_amount (decimal)
+--    - sale_date (date)
+--
+-- 3. `products`: A new hypothetical table for product information.
+--    - product_id (integer, primary key)
+--    - product_name (text)
+--
+-- 4. `sales_items`: A new hypothetical table to link sales to products.
+--    - sale_id (integer, foreign key)
+--    - product_id (integer, foreign key)
+
+-- ====================================================================
+-- Part 1: Exploratory Data Analysis (EDA)
+-- ====================================================================
+
+-- Query 1: Get an overview of total sales, average sale amount, and number of unique customers.
+-- This gives a high-level view of the business performance.
+SELECT
+    COUNT(sale_id) AS total_sales,
+    COUNT(DISTINCT customer_id) AS total_customers,
+    AVG(sale_amount) AS average_sale_amount,
+    SUM(sale_amount) AS total_revenue
+FROM
+    sales;
+
+-- Query 2: Analyze the distribution of sales by region.
+-- This helps identify which regions are the most profitable.
+SELECT
+    c.region,
+    COUNT(s.sale_id) AS total_sales,
+    SUM(s.sale_amount) AS total_revenue,
+    AVG(s.sale_amount) AS average_sale
+FROM
+    sales AS s
+JOIN
+    customers AS c ON s.customer_id = c.customer_id
+GROUP BY
+    c.region
+ORDER BY
+    total_revenue DESC;
+
+-- Query 3: Find the top 5 most sold products.
+-- This is useful for inventory management and marketing strategies.
+SELECT
+    p.product_name,
+    COUNT(si.product_id) AS items_sold
+FROM
+    sales_items AS si
+JOIN
+    products AS p ON si.product_id = p.product_id
+GROUP BY
+    p.product_name
+ORDER BY
+    items_sold DESC
+LIMIT 5;
+
+-- Query 4: Perform a time-series analysis of monthly revenue.
+-- This helps visualize sales trends over time, such as seasonality.
+SELECT
+    STRFTIME('%Y-%m', sale_date) AS sale_month,
+    SUM(sale_amount) AS monthly_revenue
+FROM
+    sales
+GROUP BY
+    sale_month
+ORDER BY
+    sale_month;
+
+-- ====================================================================
+-- Part 2: Feature Engineering
+-- ====================================================================
+
+-- Query 5: Create a Customer Lifetime Value (CLV) feature for each customer.
+-- This example uses a simple proxy: total revenue per customer.
+SELECT
+    customer_id,
+    SUM(sale_amount) AS customer_total_revenue,
+    COUNT(sale_id) AS customer_purchase_count
+FROM
+    sales
+GROUP BY
+    customer_id;
+
+-- Query 6: Calculate Recency, Frequency, and Monetary (RFM) values for each customer.
+-- RFM analysis is a powerful segmentation technique for marketing.
+-- This query uses the `sales` table to generate features for an ML model.
+SELECT
+    customer_id,
+    JULIANDAY('now') - MAX(JULIANDAY(sale_date)) AS recency_days,
+    COUNT(sale_id) AS frequency,
+    SUM(sale_amount) AS monetary_value
+FROM
+    sales
+GROUP BY
+    customer_id;
+
+-- ====================================================================
+-- Part 3: Customer Segmentation
+-- ====================================================================
+
+-- Query 7: Identify "High-Value" customers who spent over $500 in the last 6 months.
+-- This can be used to target specific customers with loyalty programs.
+SELECT
+    s.customer_id,
+    SUM(s.sale_amount) AS total_spend
+FROM
+    sales AS s
+WHERE
+    s.sale_date >= DATE('now', '-6 months')
+GROUP BY
+    s.customer_id
+HAVING
+    SUM(s.sale_amount) > 500
+ORDER BY
+    total_spend DESC;
+
+-- Query 8: Find customers who made their first purchase this year and have not made a second one.
+-- This can help identify customers who might need an incentive to return.
+WITH CustomerPurchaseCount AS (
+    SELECT
+        customer_id,
+        MIN(sale_date) AS first_purchase_date,
+        COUNT(sale_id) AS purchase_count
+    FROM
+        sales
+    GROUP BY
+        customer_id
+)
+SELECT
+    cpc.customer_id
+FROM
+    CustomerPurchaseCount AS cpc
+WHERE
+    cpc.purchase_count = 1
+    AND STRFTIME('%Y', cpc.first_purchase_date) = STRFTIME('%Y', 'now');
